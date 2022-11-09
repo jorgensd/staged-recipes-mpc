@@ -1,0 +1,103 @@
+{% set name = "dolfinx_mpc" %}
+{% set version = "v0.5.0.post0" %}
+{% set author = "jorgensd" %}
+
+{% set build = 2 %}
+{% if scalar == "real" %}
+{%   set build = build + 100 %}
+{% endif %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://github.com/{{ author }}/{{ name }}/archive{{ version }}.tar.gz
+  sha256: f9715e09c0750e08218b4aed9e4d9b3a3df97dc56e531d6c2df2a872b267ae96
+  # sha256 is the preferred checksum -- you can get it for a file with:
+  #  `openssl sha256 <file name>`.
+  # You may need the openssl package, available on conda-forge:
+  #  `conda install openssl -c conda-forge``
+
+build:
+  number: {{ build }}
+  skip: true # [win or py==3.7]
+  script_env:
+  - OMPI_ALLOW_RUN_AS_ROOT=1
+  - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+  - OMPI_MCA_rmaps_base_oversubscribe=1
+  - OMPI_MCA_plm=isolated
+  - OMPI_MCA_btl_vader_single_copy_mechanism=none
+
+requirements:
+  build:
+    - python # not used, just for build matrix
+
+outputs:
+  - name: libdolfinxmpc
+    script: build-libdolfinxmpc.sh
+    build:
+      skip_compile_pyc:
+        - '*'  # [build_platform != target_platform]
+      run_exports:
+        - {{ pin_subpackage("libdolfinxmpc", max_pin="x.x.x") }}
+        - petsc * {{ scalar }}_*
+    requirements:
+      build:
+        - {{ compiler("c") }}
+        - {{ compiler("cxx") }}
+        - cmake
+        - make
+        - pkg-config
+        - {{ mpi }}  # [mpi == 'openmpi' and build_platform != target_platform]
+      host:
+        - {{ mpi }}
+      run:
+        # host dependencies with run_exports
+        - {{ mpi }}
+        - petsc * {{ scalar }}_*
+
+  - name: dolfinx_mpc
+    script: dolfinx_mpc.sh
+    requirements:
+      build:
+        - {{ compiler("c") }}
+        - {{ compiler("cxx") }}
+        - cmake
+        - make
+        - pkg-config
+        - python                                 # [build_platform != target_platform]
+        - cross-python_{{ target_platform }}     # [build_platform != target_platform]
+        - pybind11                               # [build_platform != target_platform]
+        - {{ mpi }}  # [mpi == 'openmpi' and build_platform != target_platform]
+      host:
+        - {{ mpi }}
+        - {{ pin_subpackage("libdolfinxmpc", exact=True) }}
+        - python
+      run:
+        - {{ compiler("cxx") }}  # [linux]
+        - python
+        - {{ pin_subpackage("libdolfinxmpc", exact=True) }}
+    test:
+      script: test-dolfinx.sh
+      source_files:
+        - python/demo
+      requires:
+        - pip
+        - pytest >=6
+
+about:
+  home: 
+  summary: Multi-point constraint extension for FEniCSx
+  description: |
+    Extension to enforce multipoint constraints with FEniCSx in C++ and Python
+  license: MIT
+  license_family: MIT
+  license_file: LICENSE
+  doc_url: https://jorgensd.github.io/dolfinx_mpc/
+  dev_url: https://github.com/jorgensd/dolfinx_mpc
+
+extra:
+  feedstock-name: dolfinx_mpc
+  recipe-maintainers:
+    - jorgensd
